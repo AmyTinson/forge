@@ -1,0 +1,12 @@
+# binaries
+go
+forge
+*.exe
+*.out
+
+# output (we'll generate this later)
+data/
+notes/
+
+# OS stuff
+.DS_Store

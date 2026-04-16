@@ -1,59 +1,62 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 )
 
-func forge() {
-	args := os.Args
-	if len(args) < 3 {
-		log.Fatal("usage: forge <command> <arg>")
+func runRead(path string) error {
+	file, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read file: %w", err)
 	}
-	command := os.Args[1]
-	arg := os.Args[2]
+	if _, err := os.Stdout.Write(file); err != nil {
+		return fmt.Errorf("write to stdout: %w", err)
+	}
+	return nil
+}
+
+func forge(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: forge <command> <arg>")
+	}
+	command := args[0]
+	arg := args[1]
 
 	switch command {
 	case "read":
-		{
-			file, err := os.ReadFile(arg)
-			if err != nil {
-				log.Fatal(err)
-			}
-			os.Stdout.Write(file)
-		}
+		return runRead(arg)
 
 	case "run":
-		{
-			switch arg {
-			case "bug-triage":
-				{
-					if len(args) < 5 || args[3] != "--input" || args[4] == "" {
-						log.Fatal("usage: forge run bug-triage --input <file>")
-					}
-					bugTriage(args[4])
-				}
-			default:
-				log.Fatal("Unknown argument for run command: " + arg)
+
+		switch arg {
+		case "bug-triage":
+			if len(args) < 4 || args[2] != "--input" || args[3] == "" {
+				return fmt.Errorf("usage: forge run bug-triage --input <file>")
 			}
+			bugTriage(args[3])
+
+		default:
+			return fmt.Errorf("unknown argument for run command: %s", arg)
 		}
 
 	case "note":
-		{
-			switch arg {
-			case "add":
-				{
-					if len(args) < 4 || args[3] == "" {
-						log.Fatal("usage: forge note add \"your note\"")
-					}
-					addNote(args[3])
-				}
-			default:
-				log.Fatal("Unknown argument for add command: " + arg)
+
+		switch arg {
+		case "add":
+
+			if len(args) < 3 || args[2] == "" {
+				return fmt.Errorf("usage: forge note add \"your note\"")
 			}
+			addNote(args[2])
+
+		default:
+			return fmt.Errorf("unknown argument for add command: %s", arg)
 		}
+
 	default:
-		log.Fatal("Unknown command: " + command)
+		return fmt.Errorf("unknown command: %s", command)
 	}
+	return nil
 
 }

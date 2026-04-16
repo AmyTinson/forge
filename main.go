@@ -1,5 +1,12 @@
 package main
 
+import (
+	"log"
+	"os"
+)
+
 func main() {
-	forge()
+	if err := forge(os.Args[1:]); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -6,7 +6,7 @@ A Go-based CLI tool for orchestrating developer workflows.
 
 * CLI command parsing
 * File input handling
-* Initial `bug-triage` workflow scaffold
+* Initial `bug-triage` workflow scaffold with data artifacts and runs
 * Basic notetaking
 
 ## Usage
@@ -18,7 +18,5 @@ forge note add <note>
 ```
 
 ## Next steps
-
-* Persist runs to disk
-* Generate markdown artifacts
+* Run viewer
 * Integrate LLM for bug triage

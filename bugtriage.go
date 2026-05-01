@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AmyTinson/forge/internal/triage"
+
 	"github.com/google/uuid"
 )
 
 /**
 TODO:
-- put triage template in a separate file
 - declar vars for dir names at top of file for easier changes
 - make helper func for file naming
 */
@@ -44,24 +45,15 @@ func bugTriage(inputFile string) {
 		fmt.Println("error making dir:", err)
 		return
 	}
-
-	triage := fmt.Sprintf(`
-# Bug Triage
-
-## Input File
-%s
-
-## Raw Bug Report
-%s
-
-## Summary
-TODO
-
-## Unknowns
-- TODO
-
-## Repro Steps
-- TODO`, filepath.Base(inputFile), string(bugReportFile))
+	triageData := triage.TriageData{
+		FileName:  filepath.Base(inputFile),
+		RawReport: string(bugReportFile),
+	}
+	triage, err := triage.RenderTriage(triageData)
+	if err != nil {
+		fmt.Println("renderTriage:", err)
+		return
+	}
 	inputFileName := filepath.Base(inputFile)
 	inputFileExt := filepath.Ext(inputFileName)
 	newFileName := strings.TrimSuffix(inputFileName, inputFileExt) + "-triage.md"

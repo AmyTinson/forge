@@ -1,4 +1,4 @@
-module Documents/Code/Projects/playground/go
+module github.com/AmyTinson/forge
 
 go 1.26.1
 

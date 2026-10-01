@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
@@ -17,7 +18,8 @@ func runRead(path string) error {
 }
 
 func forge(args []string) error {
-	if len(args) < 1 {
+	ctx := context.Background()
+	if len(args) < 2 {
 		return fmt.Errorf("usage: forge <command> <arg>")
 	}
 	command := args[0]
@@ -34,7 +36,14 @@ func forge(args []string) error {
 			if len(args) < 4 || args[2] != "--input" || args[3] == "" {
 				return fmt.Errorf("usage: forge run bug-triage --input <file>")
 			}
-			bugTriage(args[3])
+			workflow := BugTriageWorkflow{
+				InputFile: args[3],
+			}
+
+			err := workflow.Run(ctx)
+			if err != nil {
+				return err
+			}
 
 		default:
 			return fmt.Errorf("unknown argument for run command: %s", arg)

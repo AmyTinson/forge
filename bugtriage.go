@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,31 +29,42 @@ type Run struct {
 	Error            string    `json:"error,omitempty"`
 }
 
-func bugTriage(inputFile string) {
+type BugTriageWorkflow struct {
+	InputFile string
+}
+
+var _ Workflow = BugTriageWorkflow{}
+
+func (w BugTriageWorkflow) Name() string {
+	return "bug-triage"
+}
+
+func (w BugTriageWorkflow) Run(ctx context.Context) error {
+	inputFile := w.InputFile
 	bugReportFile, err := os.ReadFile(inputFile)
 	if err != nil {
 		fmt.Println("error reading file:", err)
-		return
+		return err
 	}
 
 	err = os.MkdirAll("data/artifacts", 0755)
 	if err != nil {
 		fmt.Println("error making dir:", err)
-		return
+		return err
 	}
 	err = os.MkdirAll("data/runs", 0755)
 	if err != nil {
 		fmt.Println("error making dir:", err)
-		return
+		return err
 	}
 	triageData := triage.TriageData{
 		FileName:  filepath.Base(inputFile),
 		RawReport: string(bugReportFile),
 	}
-	triage, err := triage.RenderTriage(triageData)
+	renderedTriage, err := triage.RenderTriage(triageData)
 	if err != nil {
 		fmt.Println("renderTriage:", err)
-		return
+		return err
 	}
 	inputFileName := filepath.Base(inputFile)
 	inputFileExt := filepath.Ext(inputFileName)
@@ -62,18 +74,18 @@ func bugTriage(inputFile string) {
 	artifactFile, err := os.OpenFile(newFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Println("error opening file:", err)
-		return
+		return err
 	}
 	defer artifactFile.Close()
 
-	_, err = artifactFile.WriteString(triage + "\n")
+	_, err = artifactFile.WriteString(renderedTriage + "\n")
 	if err != nil {
 		fmt.Println("error writing to file:", err)
-		return
+		return err
 	}
 	run := Run{
 		ID:               uuid.New().String(),
-		Workflow:         "bug-triage",
+		Workflow:         w.Name(),
 		InputFileName:    inputFileName,
 		ArtifactFileName: newFileName,
 		CreatedAt:        time.Now(),
@@ -82,20 +94,21 @@ func bugTriage(inputFile string) {
 	runFile, err := os.OpenFile(runFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Println("error opening run file:", err)
-		return
+		return err
 	}
 	defer runFile.Close()
 
 	runData, err := json.Marshal(run)
 	if err != nil {
 		fmt.Println("error marshaling run data:", err)
-		return
+		return err
 	}
 
 	_, err = runFile.Write(runData)
 	if err != nil {
 		fmt.Println("error writing run data to file:", err)
-		return
+		return err
 	}
 	fmt.Println("triage written:", newFilePath)
+	return err
 }

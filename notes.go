@@ -5,19 +5,19 @@ import (
 	"os"
 )
 
-func addNote(note string) {
+func addNote(note string) error {
 	f, err := os.OpenFile("notes/notes.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Println("error:", err)
-		return
+		return fmt.Errorf("open notes file: %w", err)
 	}
-	defer f.Close()
 
 	_, err = f.WriteString(note + "\n")
+	closeErr := f.Close()
 	if err != nil {
-		fmt.Println("error:", err)
-		return
+		return fmt.Errorf("write notes file: %w", err)
 	}
-
-	fmt.Println("note added:", note)
+	if closeErr != nil {
+		return fmt.Errorf("close notes file: %w", closeErr)
+	}
+	return nil
 }

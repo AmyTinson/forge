@@ -64,15 +64,6 @@ func (w BugTriageWorkflow) Run(ctx context.Context) error {
 		return fmt.Errorf("read input file: %w", err)
 	}
 
-	artifactDir := filepath.Join("data", "artifacts")
-	runDir := filepath.Join("data", "runs")
-	if err := os.MkdirAll(artifactDir, 0755); err != nil {
-		return fmt.Errorf("create artifact directory: %w", err)
-	}
-	if err := os.MkdirAll(runDir, 0755); err != nil {
-		return fmt.Errorf("create run directory: %w", err)
-	}
-
 	triageData := triage.TriageData{
 		FileName:  filepath.Base(inputFile),
 		RawReport: string(bugReportFile),
@@ -92,29 +83,46 @@ func (w BugTriageWorkflow) Run(ctx context.Context) error {
 		ArtifactFileName: fmt.Sprintf("%s-triage-%s.md", strings.TrimSuffix(inputFileName, inputFileExt), runID),
 		CreatedAt:        time.Now(),
 	}
+	artifactPath, err := persistRun(run, []byte(renderedTriage+"\n"))
+	if err != nil {
+		return fmt.Errorf("persist triage run: %w", err)
+	}
+
+	fmt.Println("triage written:", artifactPath)
+	return nil
+}
+
+func persistRun(run Run, artifact []byte) (string, error) {
+	artifactDir := filepath.Join("data", "artifacts")
+	runDir := filepath.Join("data", "runs")
+	if err := os.MkdirAll(artifactDir, 0755); err != nil {
+		return "", fmt.Errorf("create artifact directory: %w", err)
+	}
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		return "", fmt.Errorf("create run directory: %w", err)
+	}
+
 	runData, err := json.Marshal(run)
 	if err != nil {
-		return fmt.Errorf("marshal run record: %w", err)
+		return "", fmt.Errorf("marshal run record: %w", err)
 	}
 
 	artifactPath := filepath.Join(artifactDir, run.ArtifactFileName)
-	if err := writeNewFile(artifactPath, []byte(renderedTriage+"\n")); err != nil {
-		return fmt.Errorf("write triage artifact: %w", err)
+	if err := writeNewFile(artifactPath, artifact); err != nil {
+		return "", fmt.Errorf("write artifact: %w", err)
 	}
 
 	runPath := filepath.Join(runDir, run.ID+".json")
 	if err := writeNewFile(runPath, runData); err != nil {
 		if cleanupErr := os.Remove(artifactPath); cleanupErr != nil {
-			return errors.Join(
+			return "", errors.Join(
 				fmt.Errorf("write run record: %w", err),
 				fmt.Errorf("remove incomplete artifact %q: %w", artifactPath, cleanupErr),
 			)
 		}
-		return fmt.Errorf("write run record: %w", err)
+		return "", fmt.Errorf("write run record: %w", err)
 	}
-
-	fmt.Println("triage written:", artifactPath)
-	return nil
+	return artifactPath, nil
 }
 
 func writeNewFile(path string, data []byte) error {

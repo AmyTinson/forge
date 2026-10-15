@@ -6,6 +6,17 @@ import (
 	"os"
 )
 
+func init() {
+	if err := workflowRegistry.Register(
+		workflowDefinitionCommandName,
+		NewWorkflowDefinitionFactory(func() (LLMProvider, error) {
+			return NewOpenAIProvider()
+		}),
+	); err != nil {
+		panic(err)
+	}
+}
+
 func runRead(path string) error {
 	file, err := os.ReadFile(path)
 	if err != nil {

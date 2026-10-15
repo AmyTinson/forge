@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,11 +17,7 @@ import (
 	"github.com/google/uuid"
 )
 
-/**
-TODO:
-- declar vars for dir names at top of file for easier changes
-- make helper func for file naming
-*/
+const bugTriageWorkflowName = "bug-triage"
 
 type Run struct {
 	ID               string    `json:"id"`
@@ -36,79 +35,109 @@ type BugTriageWorkflow struct {
 var _ Workflow = BugTriageWorkflow{}
 
 func (w BugTriageWorkflow) Name() string {
-	return "bug-triage"
+	return bugTriageWorkflowName
+}
+
+func init() {
+	if err := workflowRegistry.Register(bugTriageWorkflowName, newBugTriageWorkflow); err != nil {
+		panic(err)
+	}
+}
+
+func newBugTriageWorkflow(args []string) (Workflow, error) {
+	flags := flag.NewFlagSet(bugTriageWorkflowName, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	inputFile := flags.String("input", "", "input bug report file")
+	if err := flags.Parse(args); err != nil {
+		return nil, fmt.Errorf("parse bug-triage options: %w", err)
+	}
+	if flags.NArg() != 0 || *inputFile == "" {
+		return nil, fmt.Errorf("usage: forge run bug-triage --input <file>")
+	}
+	return BugTriageWorkflow{InputFile: *inputFile}, nil
 }
 
 func (w BugTriageWorkflow) Run(ctx context.Context) error {
 	inputFile := w.InputFile
 	bugReportFile, err := os.ReadFile(inputFile)
 	if err != nil {
-		fmt.Println("error reading file:", err)
-		return err
+		return fmt.Errorf("read input file: %w", err)
 	}
 
-	err = os.MkdirAll("data/artifacts", 0755)
-	if err != nil {
-		fmt.Println("error making dir:", err)
-		return err
-	}
-	err = os.MkdirAll("data/runs", 0755)
-	if err != nil {
-		fmt.Println("error making dir:", err)
-		return err
-	}
 	triageData := triage.TriageData{
 		FileName:  filepath.Base(inputFile),
 		RawReport: string(bugReportFile),
 	}
 	renderedTriage, err := triage.RenderTriage(triageData)
 	if err != nil {
-		fmt.Println("renderTriage:", err)
-		return err
+		return fmt.Errorf("render triage: %w", err)
 	}
+
 	inputFileName := filepath.Base(inputFile)
 	inputFileExt := filepath.Ext(inputFileName)
-	newFileName := strings.TrimSuffix(inputFileName, inputFileExt) + "-triage.md"
-	newFilePath := "data/artifacts/" + newFileName
-
-	artifactFile, err := os.OpenFile(newFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		fmt.Println("error opening file:", err)
-		return err
-	}
-	defer artifactFile.Close()
-
-	_, err = artifactFile.WriteString(renderedTriage + "\n")
-	if err != nil {
-		fmt.Println("error writing to file:", err)
-		return err
-	}
+	runID := uuid.NewString()
 	run := Run{
-		ID:               uuid.New().String(),
+		ID:               runID,
 		Workflow:         w.Name(),
 		InputFileName:    inputFileName,
-		ArtifactFileName: newFileName,
+		ArtifactFileName: fmt.Sprintf("%s-triage-%s.md", strings.TrimSuffix(inputFileName, inputFileExt), runID),
 		CreatedAt:        time.Now(),
 	}
-	runFilePath := "data/runs/" + run.ID + ".json"
-	runFile, err := os.OpenFile(runFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	artifactPath, err := persistRun(run, []byte(renderedTriage+"\n"))
 	if err != nil {
-		fmt.Println("error opening run file:", err)
-		return err
+		return fmt.Errorf("persist triage run: %w", err)
 	}
-	defer runFile.Close()
+
+	fmt.Println("triage written:", artifactPath)
+	return nil
+}
+
+func persistRun(run Run, artifact []byte) (string, error) {
+	artifactDir := filepath.Join("data", "artifacts")
+	runDir := filepath.Join("data", "runs")
+	if err := os.MkdirAll(artifactDir, 0755); err != nil {
+		return "", fmt.Errorf("create artifact directory: %w", err)
+	}
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		return "", fmt.Errorf("create run directory: %w", err)
+	}
 
 	runData, err := json.Marshal(run)
 	if err != nil {
-		fmt.Println("error marshaling run data:", err)
-		return err
+		return "", fmt.Errorf("marshal run record: %w", err)
 	}
 
-	_, err = runFile.Write(runData)
-	if err != nil {
-		fmt.Println("error writing run data to file:", err)
-		return err
+	artifactPath := filepath.Join(artifactDir, run.ArtifactFileName)
+	if err := writeNewFile(artifactPath, artifact); err != nil {
+		return "", fmt.Errorf("write artifact: %w", err)
 	}
-	fmt.Println("triage written:", newFilePath)
-	return err
+
+	runPath := filepath.Join(runDir, run.ID+".json")
+	if err := writeNewFile(runPath, runData); err != nil {
+		if cleanupErr := os.Remove(artifactPath); cleanupErr != nil {
+			return "", errors.Join(
+				fmt.Errorf("write run record: %w", err),
+				fmt.Errorf("remove incomplete artifact %q: %w", artifactPath, cleanupErr),
+			)
+		}
+		return "", fmt.Errorf("write run record: %w", err)
+	}
+	return artifactPath, nil
+}
+
+func writeNewFile(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return fmt.Errorf("create %q: %w", path, err)
+	}
+
+	_, writeErr := file.Write(data)
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		if removeErr := os.Remove(path); removeErr != nil {
+			return errors.Join(writeErr, closeErr, fmt.Errorf("remove incomplete file %q: %w", path, removeErr))
+		}
+		return errors.Join(writeErr, closeErr)
+	}
+	return nil
 }

@@ -6,6 +6,17 @@ import (
 	"os"
 )
 
+func init() {
+	if err := workflowRegistry.Register(
+		workflowDefinitionCommandName,
+		NewWorkflowDefinitionFactory(func() (LLMProvider, error) {
+			return NewOpenAIProvider()
+		}),
+	); err != nil {
+		panic(err)
+	}
+}
+
 func runRead(path string) error {
 	file, err := os.ReadFile(path)
 	if err != nil {
@@ -18,54 +29,47 @@ func runRead(path string) error {
 }
 
 func forge(args []string) error {
-	ctx := context.Background()
-	if len(args) < 2 {
-		return fmt.Errorf("usage: forge <command> <arg>")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: forge <command> [arguments]")
 	}
-	command := args[0]
-	arg := args[1]
 
-	switch command {
+	switch args[0] {
 	case "read":
-		return runRead(arg)
-
+		if len(args) != 2 || args[1] == "" {
+			return fmt.Errorf("usage: forge read <file>")
+		}
+		return runRead(args[1])
 	case "run":
-
-		switch arg {
-		case "bug-triage":
-			if len(args) < 4 || args[2] != "--input" || args[3] == "" {
-				return fmt.Errorf("usage: forge run bug-triage --input <file>")
-			}
-			workflow := BugTriageWorkflow{
-				InputFile: args[3],
-			}
-
-			err := workflow.Run(ctx)
-			if err != nil {
-				return err
-			}
-
-		default:
-			return fmt.Errorf("unknown argument for run command: %s", arg)
-		}
-
+		return runCommand(args[1:])
 	case "note":
-
-		switch arg {
-		case "add":
-
-			if len(args) < 3 || args[2] == "" {
-				return fmt.Errorf("usage: forge note add \"your note\"")
-			}
-			addNote(args[2])
-
-		default:
-			return fmt.Errorf("unknown argument for add command: %s", arg)
-		}
-
+		return noteCommand(args[1:])
 	default:
-		return fmt.Errorf("unknown command: %s", command)
+		return fmt.Errorf("unknown command: %s", args[0])
 	}
-	return nil
+}
 
+func runCommand(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: forge run <workflow> [options]")
+	}
+
+	return workflowRegistry.Run(context.Background(), args[0], args[1:])
+}
+
+func noteCommand(args []string) error {
+	if len(args) == 0 || args[0] != "add" {
+		if len(args) == 0 {
+			return fmt.Errorf("usage: forge note add \"your note\"")
+		}
+		return fmt.Errorf("unknown note command: %s", args[0])
+	}
+
+	if len(args) != 2 || args[1] == "" {
+		return fmt.Errorf("usage: forge note add \"your note\"")
+	}
+	if err := addNote(args[1]); err != nil {
+		return fmt.Errorf("add note: %w", err)
+	}
+	fmt.Println("note added:", args[1])
+	return nil
 }

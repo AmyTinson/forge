@@ -53,5 +53,3 @@ func (r *WorkflowRegistry) Run(ctx context.Context, name string, args []string) 
 	}
 	return workflow.Run(ctx)
 }
-
-var workflowRegistry = NewWorkflowRegistry()

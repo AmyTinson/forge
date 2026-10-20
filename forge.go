@@ -6,15 +6,20 @@ import (
 	"os"
 )
 
-func init() {
-	if err := workflowRegistry.Register(
+func newDefaultWorkflowRegistry() (*WorkflowRegistry, error) {
+	registry := NewWorkflowRegistry()
+	if err := registry.Register(bugTriageWorkflowName, newBugTriageWorkflow); err != nil {
+		return nil, err
+	}
+	if err := registry.Register(
 		workflowDefinitionCommandName,
 		NewWorkflowDefinitionFactory(func() (LLMProvider, error) {
 			return HTTPGenerationProviderFromEnv()
 		}),
 	); err != nil {
-		panic(err)
+		return nil, err
 	}
+	return registry, nil
 }
 
 func runRead(path string) error {
@@ -40,7 +45,11 @@ func forge(args []string) error {
 		}
 		return runRead(args[1])
 	case "run":
-		return runCommand(args[1:])
+		registry, err := newDefaultWorkflowRegistry()
+		if err != nil {
+			return fmt.Errorf("register workflows: %w", err)
+		}
+		return runCommand(registry, args[1:])
 	case "note":
 		return noteCommand(args[1:])
 	default:
@@ -48,12 +57,12 @@ func forge(args []string) error {
 	}
 }
 
-func runCommand(args []string) error {
+func runCommand(registry *WorkflowRegistry, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: forge run <workflow> [options]")
 	}
 
-	return workflowRegistry.Run(context.Background(), args[0], args[1:])
+	return registry.Run(context.Background(), args[0], args[1:])
 }
 
 func noteCommand(args []string) error {

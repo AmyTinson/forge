@@ -10,7 +10,7 @@ func init() {
 	if err := workflowRegistry.Register(
 		workflowDefinitionCommandName,
 		NewWorkflowDefinitionFactory(func() (LLMProvider, error) {
-			return NewOpenAIProvider()
+			return HTTPGenerationProviderFromEnv()
 		}),
 	); err != nil {
 		panic(err)
